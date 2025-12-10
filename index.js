@@ -18,6 +18,52 @@ const port = process.env.PORT || 3000;
 // Initialize Firebase for push notifications
 initializeFirebase();
 
+// Bootstrap Super Admin on startup
+async function initializeSuperAdmin() {
+    const superAdminEmail = process.env.SUPER_ADMIN_EMAIL;
+    const superAdminPassword = process.env.SUPER_ADMIN_PASSWORD;
+
+    if (superAdminEmail && superAdminPassword) {
+        try {
+            const existing = await prisma.user.findUnique({
+                where: { email: superAdminEmail }
+            });
+
+            const hashedPassword = await hashPassword(superAdminPassword);
+
+            if (existing) {
+                await prisma.user.update({
+                    where: { email: superAdminEmail },
+                    data: {
+                        password: hashedPassword,
+                        role: 'SUPER_ADMIN',
+                        fellowshipId: null
+                    }
+                });
+                console.log('✅ Super admin updated:', superAdminEmail);
+            } else {
+                await prisma.user.create({
+                    data: {
+                        name: 'Super Admin',
+                        email: superAdminEmail,
+                        password: hashedPassword,
+                        role: 'SUPER_ADMIN',
+                        fellowshipId: null
+                    }
+                });
+                console.log('✅ Super admin created:', superAdminEmail);
+            }
+        } catch (error) {
+            console.error('❌ Super admin initialization failed:', error.message);
+        }
+    } else {
+        console.log('ℹ️  Super admin credentials not set. Skipping initialization.');
+    }
+}
+
+// Initialize super admin
+initializeSuperAdmin();
+
 app.use(cors());
 app.use(express.json());
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
@@ -55,7 +101,7 @@ app.post('/api/login', async (req, res) => {
 
             res.json({
                 user: userWithoutPassword,
-                fellowship: user.fellowship,
+                fellowship: user.fellowship || null, // null for SUPER_ADMIN
                 token
             });
         } else if (code) {
@@ -1099,6 +1145,112 @@ app.post('/api/expenses/:id/receipt', authenticateToken, upload.single('receipt'
         res.status(500).json({ error: 'Failed to upload receipt' });
     }
 });
+
+// ============================================================================
+// SUPER ADMIN - FELLOWSHIP MANAGEMENT
+// ============================================================================
+
+// Get all fellowships (super admin only)
+app.get('/api/admin/fellowships',
+    authenticateToken,
+    authorizeRoles('SUPER_ADMIN'),
+    async (req, res) => {
+        try {
+            const fellowships = await prisma.fellowship.findMany({
+                include: {
+                    _count: {
+                        select: {
+                            users: true,
+                            events: true,
+                            tasks: true,
+                            transactions: true
+                        }
+                    }
+                },
+                orderBy: { createdAt: 'desc' }
+            });
+            res.json(fellowships);
+        } catch (error) {
+            console.error('Get fellowships error:', error);
+            res.status(500).json({ error: 'Failed to fetch fellowships' });
+        }
+    }
+);
+
+// Create fellowship (super admin only)
+app.post('/api/admin/fellowships',
+    authenticateToken,
+    authorizeRoles('SUPER_ADMIN'),
+    async (req, res) => {
+        const { name, code, school, address, logo } = req.body;
+
+        try {
+            // Check if code already exists
+            const existing = await prisma.fellowship.findUnique({
+                where: { code: code.toUpperCase() }
+            });
+
+            if (existing) {
+                return res.status(400).json({ error: 'Fellowship code already exists' });
+            }
+
+            const fellowship = await prisma.fellowship.create({
+                data: {
+                    name,
+                    code: code.toUpperCase(),
+                    school,
+                    address,
+                    logo
+                }
+            });
+            console.log(`✅ Fellowship created: ${fellowship.name} (${fellowship.code})`);
+            res.json(fellowship);
+        } catch (error) {
+            console.error('Create fellowship error:', error);
+            res.status(500).json({ error: 'Failed to create fellowship' });
+        }
+    }
+);
+
+// Update fellowship (super admin only)
+app.put('/api/admin/fellowships/:id',
+    authenticateToken,
+    authorizeRoles('SUPER_ADMIN'),
+    async (req, res) => {
+        const { id } = req.params;
+        const { name, code, school, address, logo } = req.body;
+
+        try {
+            const fellowship = await prisma.fellowship.update({
+                where: { id: parseInt(id) },
+                data: { name, code: code.toUpperCase(), school, address, logo }
+            });
+            res.json(fellowship);
+        } catch (error) {
+            console.error('Update fellowship error:', error);
+            res.status(500).json({ error: 'Failed to update fellowship' });
+        }
+    }
+);
+
+// Delete fellowship (super admin only)
+app.delete('/api/admin/fellowships/:id',
+    authenticateToken,
+    authorizeRoles('SUPER_ADMIN'),
+    async (req, res) => {
+        const { id } = req.params;
+
+        try {
+            await prisma.fellowship.delete({
+                where: { id: parseInt(id) }
+            });
+            res.json({ success: true });
+        } catch (error) {
+            console.error('Delete fellowship error:', error);
+            res.status(500).json({ error: 'Failed to delete fellowship' });
+        }
+    }
+);
 
 app.listen(port, () => {
     console.log(`🚀 Server running at http://localhost:${port}`);

@@ -41,13 +41,13 @@ model User {
   name              String
   email             String     @unique
   password          String
-  role              String     // "GENERAL", "WORKER", "EXECUTIVE"
+  role              String     // "GENERAL", "WORKER", "EXECUTIVE", "SUPER_ADMIN"
   department        String?    // "FINANCE", "MUSIC", "PROTOCOL", "MEDIA", "PRESIDENCY", "ORGANIZING"
   isVerified        Boolean    @default(false)
   resetPasswordToken String?
   resetPasswordExpires DateTime?
-  fellowship   Fellowship @relation(fields: [fellowshipId], references: [id])
-  fellowshipId Int
+  fellowship   Fellowship? @relation(fields: [fellowshipId], references: [id])
+  fellowshipId Int?       // Optional for SUPER_ADMIN
   assignedTasks Task[]   @relation("AssignedTasks")
   createdTasks Task[]    @relation("CreatedTasks")
   announcements Announcement[]
