@@ -1,0 +1,235 @@
+
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+
+model Fellowship {
+  id            Int            @id @default(autoincrement())
+  name          String
+  code          String         @unique // The login code (e.g., "TCCF")
+  logo          String?        // Logo URL
+  address       String?
+  school        String?
+  events        Event[]
+  resources     Resource[]
+  users         User[]
+  transactions  Transaction[]
+  songs         Song[]
+  attendance    Attendance[]
+  mediaPosts    MediaPost[]
+  sessions      Session[]
+  tasks         Task[]
+  announcements Announcement[]
+  firstTimers   FirstTimer[]
+  prayerRequests PrayerRequest[]
+  budgets       Budget[]
+  calendarEvents CalendarEvent[]
+  expenseRequests ExpenseRequest[]
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+}
+
+model User {
+  id                Int        @id @default(autoincrement())
+  name              String
+  email             String     @unique
+  password          String
+  role              String     // "GENERAL", "WORKER", "EXECUTIVE"
+  department        String?    // "FINANCE", "MUSIC", "PROTOCOL", "MEDIA", "PRESIDENCY", "ORGANIZING"
+  isVerified        Boolean    @default(false)
+  resetPasswordToken String?
+  startDate    DateTime
+  endDate      DateTime
+  isActive     Boolean    @default(false)
+  fellowship   Fellowship @relation(fields: [fellowshipId], references: [id])
+  fellowshipId Int
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+}
+
+model Task {
+  id           Int        @id @default(autoincrement())
+  title        String
+  description  String?
+  deadline     DateTime
+  status       String     @default("PENDING") // "PENDING", "IN_PROGRESS", "COMPLETED"
+  priority     String     @default("MEDIUM") // "LOW", "MEDIUM", "HIGH"
+  assignedTo   User       @relation("AssignedTasks", fields: [assignedToId], references: [id])
+  assignedToId Int
+  createdBy    User       @relation("CreatedTasks", fields: [createdById], references: [id])
+  createdById  Int
+  fellowship   Fellowship @relation(fields: [fellowshipId], references: [id])
+  fellowshipId Int
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+}
+
+model Announcement {
+  id           Int        @id @default(autoincrement())
+  title        String
+  content      String
+  targetRoles  String     @default("[]") // JSON array: ["GENERAL", "WORKER", "EXECUTIVE"]
+  targetDepts  String     @default("[]") // JSON array: ["MUSIC", "FINANCE", etc.] - empty means all
+  createdBy    User       @relation(fields: [createdById], references: [id])
+  createdById  Int
+  fellowship   Fellowship @relation(fields: [fellowshipId], references: [id])
+  fellowshipId Int
+  sendPush     Boolean    @default(false)
+  sendSMS      Boolean    @default(false)
+  sendWhatsApp Boolean    @default(false)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+}
+
+model FirstTimer {
+  id           Int        @id @default(autoincrement())
+  name         String
+  phone        String?
+  email        String?
+  address      String?
+  howHeard     String?
+  visitDate    DateTime   @default(now())
+  followedUp   Boolean    @default(false)
+  followUps    FollowUp[]
+  fellowship   Fellowship @relation(fields: [fellowshipId], references: [id])
+  fellowshipId Int
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+}
+
+model FollowUp {
+  id           Int        @id @default(autoincrement())
+  firstTimer   FirstTimer @relation(fields: [firstTimerId], references: [id])
+  firstTimerId Int
+  agent        User       @relation(fields: [agentId], references: [id])
+  agentId      Int
+  notes        String
+  nextAction   String?
+  followUpDate DateTime   @default(now())
+  createdAt    DateTime   @default(now())
+}
+
+model PrayerRequest {
+  id            Int        @id @default(autoincrement())
+  requestorName String
+  request       String
+  status        String     @default("PENDING") // "PENDING", "ANSWERED"
+  isAnonymous   Boolean    @default(false)
+  fellowship    Fellowship @relation(fields: [fellowshipId], references: [id])
+  fellowshipId  Int
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+}
+
+model Budget {
+  id           Int        @id @default(autoincrement())
+  title        String
+  amount       Float
+  period       String     // "Monthly", "Quarterly", "Annual"
+  department   String?
+  status       String     @default("DRAFT") // "DRAFT", "SUBMITTED", "APPROVED", "REJECTED"
+  approvedBy   Int?
+  approvedAt   DateTime?
+  fellowship   Fellowship @relation(fields: [fellowshipId], references: [id])
+  fellowshipId Int
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+}
+
+model Receipt {
+  id            Int         @id @default(autoincrement())
+  transaction   Transaction @relation(fields: [transactionId], references: [id])
+  transactionId Int
+  fileUrl       String
+  uploadedBy    User        @relation(fields: [uploadedById], references: [id])
+  uploadedById  Int
+  uploadedAt    DateTime    @default(now())
+}
+
+model CalendarEvent {
+  id           Int        @id @default(autoincrement())
+  title        String
+  date         DateTime
+  description  String?
+  type         String     // "Exam", "Holiday", "Fellowship Event", "Academic"
+  fellowship   Fellowship @relation(fields: [fellowshipId], references: [id])
+  fellowshipId Int
+  createdAt    DateTime   @default(now())
+}
+
+model Event {
+  id           Int        @id @default(autoincrement())
+  title        String
+  description  String?
+  date         String
+  time         String
+  location     String
+  type         String     // "Service", "Study", "Youth", "Other"
+  status       String     @default("UPCOMING") // "UPCOMING", "COMPLETED", "CANCELLED"
+  fellowship   Fellowship @relation(fields: [fellowshipId], references: [id])
+  fellowshipId Int
+}
+
+model Resource {
+  id           Int        @id @default(autoincrement())
+  title        String
+  type         String     // "PDF", "Video", "Audio"
+  url          String
+  size         String?
+  fellowship   Fellowship @relation(fields: [fellowshipId], references: [id])
+  fellowshipId Int
+}
+
+model Transaction {
+  id           Int        @id @default(autoincrement())
+  type         String     // "INCOME", "EXPENSE"
+  category     String     // "TITHE", "OFFERING", "LOGISTICS", etc.
+  amount       Float
+  description  String
+  date         DateTime   @default(now())
+  status       String     @default("PENDING") // "PENDING", "APPROVED", "REJECTED"
+  approvedBy   Int?
+  approvedAt   DateTime?
+  fellowship   Fellowship @relation(fields: [fellowshipId], references: [id])
+  fellowshipId Int
+  receipts     Receipt[]
+}
+
+model Song {
+  id           Int        @id @default(autoincrement())
+  title        String
+  artist       String
+  key          String?
+  link         String?
+  fellowship   Fellowship @relation(fields: [fellowshipId], references: [id])
+  fellowshipId Int
+}
+
+model Attendance {
+  id            Int        @id @default(autoincrement())
+  date          DateTime   @default(now())
+  menCount      Int
+  womenCount    Int
+  childrenCount Int
+  total         Int
+  serviceType   String     // "Sunday Service", "Bible Study"
+  fellowship    Fellowship @relation(fields: [fellowshipId], references: [id])
+  fellowshipId  Int
+}
+
+model MediaPost {
+  id            Int        @id @default(autoincrement())
+  platform      String     // "Facebook", "Instagram", "YouTube"
+  content       String
+  status        String     // "Scheduled", "Posted"
+  scheduledDate String
+  fellowship    Fellowship @relation(fields: [fellowshipId], references: [id])
+  fellowshipId  Int
+}
