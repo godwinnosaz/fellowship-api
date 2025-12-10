@@ -5,7 +5,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -45,11 +45,14 @@ model User {
   department        String?    // "FINANCE", "MUSIC", "PROTOCOL", "MEDIA", "PRESIDENCY", "ORGANIZING"
   isVerified        Boolean    @default(false)
   resetPasswordToken String?
-  startDate    DateTime
-  endDate      DateTime
-  isActive     Boolean    @default(false)
+  resetPasswordExpires DateTime?
   fellowship   Fellowship @relation(fields: [fellowshipId], references: [id])
   fellowshipId Int
+  assignedTasks Task[]   @relation("AssignedTasks")
+  createdTasks Task[]    @relation("CreatedTasks")
+  announcements Announcement[]
+  followUps    FollowUp[]
+  receipts     Receipt[]
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 }
@@ -233,3 +236,33 @@ model MediaPost {
   fellowship    Fellowship @relation(fields: [fellowshipId], references: [id])
   fellowshipId  Int
 }
+
+model Session {
+  id           Int        @id @default(autoincrement())
+  name         String
+  startDate    DateTime
+  endDate      DateTime
+  isActive     Boolean    @default(false)
+  fellowship   Fellowship @relation(fields: [fellowshipId], references: [id])
+  fellowshipId Int
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+}
+
+model ExpenseRequest {
+  id           Int        @id @default(autoincrement())
+  title        String
+  description  String?
+  amount       Float
+  category     String
+  status       String     @default("PENDING") // "PENDING", "APPROVED", "REJECTED"
+  requestedBy  String
+  requestedAt  DateTime   @default(now())
+  approvedBy   Int?
+  approvedAt   DateTime?
+  fellowship   Fellowship @relation(fields: [fellowshipId], references: [id])
+  fellowshipId Int
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+}
+
