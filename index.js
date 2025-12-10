@@ -1399,7 +1399,68 @@ app.post('/api/admin/fellowships/:id/users',
     }
 );
 
+
+// ============================================================================
+// PUBLIC POSTS - Landing Page Feed  
+// ============================================================================
+
+// Get all public posts (no authentication required)
+app.get('/api/public/posts', async (req, res) => {
+    try {
+        const posts = await prisma.publicPost.findMany({
+            where: { isPublic: true },
+            include: {
+                fellowship: {
+                    select: { name: true, code: true, logo: true }
+                },
+                createdBy: {
+                    select: { name: true, department: true }
+                }
+            },
+            orderBy: { createdAt: 'desc' },
+            take: 50
+        });
+        res.json(posts);
+    } catch (error) {
+        console.error('Get public posts error:', error);
+        res.status(500).json({ error: 'Failed to fetch public posts' });
+    }
+});
+
+// Create public post (executives and super admin only)
+app.post('/api/posts',
+    authenticateToken,
+    authorizeRoles('EXECUTIVE', 'SUPER_ADMIN'),
+    async (req, res) => {
+        const { title, content, type, isPublic, imageUrl } = req.body;
+        
+        try {
+            const post = await prisma.publicPost.create({
+                data: {
+                    title,
+                    content,
+                    type: type || 'ANNOUNCEMENT',
+                    isPublic: isPublic !== undefined ? isPublic : true,
+                    imageUrl,
+                    fellowshipId: req.user.fellowshipId,
+                    createdById: req.user.id
+                },
+                include: {
+                    fellowship: { select: { name: true, code: true } },
+                    createdBy: { select: { name: true } }
+                }
+            });
+            
+            console.log(`? Public post created: ` by `);
+            res.json(post);
+        } catch (error) {
+            console.error('Create post error:', error);
+            res.status(500).json({ error: 'Failed to create post' });
+        }
+    }
+);
 app.listen(port, () => {
     console.log(`🚀 Server running at http://localhost:${port}`);
     console.log(`📊 Prisma connected to database`);
 });
+

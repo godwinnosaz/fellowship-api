@@ -31,7 +31,7 @@ model Fellowship {
   prayerRequests PrayerRequest[]
   budgets       Budget[]
   calendarEvents CalendarEvent[]
-  expenseRequests ExpenseRequest[]
+  expenseRequests ExpenseRequest[]`r`n  publicPosts   PublicPost[]
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
 }
@@ -40,6 +40,7 @@ model User {
   id                Int        @id @default(autoincrement())
   name              String
   email             String     @unique
+  username          String?    @unique // Member ID for login
   password          String
   role              String     // "GENERAL", "WORKER", "EXECUTIVE", "SUPER_ADMIN"
   department        String?    // "FINANCE", "MUSIC", "PROTOCOL", "MEDIA", "PRESIDENCY", "ORGANIZING"
@@ -52,7 +53,7 @@ model User {
   createdTasks Task[]    @relation("CreatedTasks")
   announcements Announcement[]
   followUps    FollowUp[]
-  receipts     Receipt[]
+  receipts     Receipt[]`r`n  publicPosts  PublicPost[]   @relation("createdPosts")
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 }
@@ -202,7 +203,7 @@ model Transaction {
   approvedAt   DateTime?
   fellowship   Fellowship @relation(fields: [fellowshipId], references: [id])
   fellowshipId Int
-  receipts     Receipt[]
+  receipts     Receipt[]`r`n  publicPosts  PublicPost[]   @relation("createdPosts")
 }
 
 model Song {
@@ -265,4 +266,21 @@ model ExpenseRequest {
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 }
+
+
+model PublicPost {
+  id           Int        @id @default(autoincrement())
+  title        String
+  content      String
+  type         String     // "ANNOUNCEMENT", "NEWSLETTER", "UPDATE", "EVENT"
+  fellowship   Fellowship @relation(fields: [fellowshipId], references: [id])
+  fellowshipId Int
+  createdBy    User       @relation(name: "createdPosts", fields: [createdById], references: [id])
+  createdById  Int
+  isPublic     Boolean    @default(true)
+  imageUrl     String?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+}
+
 
