@@ -1252,6 +1252,153 @@ app.delete('/api/admin/fellowships/:id',
     }
 );
 
+// ============================================================================
+// FELLOWSHIP USER MANAGEMENT
+// ============================================================================
+
+// Get all users in a fellowship (super admin or fellowship leaders)
+app.get('/api/admin/fellowships/:id/users',
+    authenticateToken,
+    authorizeRoles('SUPER_ADMIN', 'EXECUTIVE'),
+    async (req, res) => {
+        const { id } = req.params;
+
+        try {
+            // If not super admin, verify user belongs to this fellowship
+            if (req.user.role !== 'SUPER_ADMIN' && req.user.fellowshipId !== parseInt(id)) {
+                return res.status(403).json({ error: 'Unauthorized' });
+            }
+
+            const users = await prisma.user.findMany({
+                where: { fellowshipId: parseInt(id) },
+                select: {
+                    id: true,
+                    name: true,
+                    email: true,
+                    role: true,
+                    department: true,
+                    createdAt: true,
+                    isVerified: true
+                },
+                orderBy: { createdAt: 'desc' }
+            });
+            res.json(users);
+        } catch (error) {
+            console.error('Get fellowship users error:', error);
+            res.status(500).json({ error: 'Failed to fetch users' });
+        }
+    }
+);
+
+// Assign role to user (super admin or president/secgen)
+app.put('/api/admin/users/:id/role',
+    authenticateToken,
+    authorizeRoles('SUPER_ADMIN', 'EXECUTIVE'),
+    async (req, res) => {
+        const { id } = req.params;
+        const { role, department } = req.body;
+
+        try {
+            // Get the user being updated
+            const targetUser = await prisma.user.findUnique({
+                where: { id: parseInt(id) }
+            });
+
+            if (!targetUser) {
+                return res.status(404).json({ error: 'User not found' });
+            }
+
+            // Authorization checks
+            if (req.user.role !== 'SUPER_ADMIN') {
+                // Must be in same fellowship
+                if (req.user.fellowshipId !== targetUser.fellowshipId) {
+                    return res.status(403).json({ error: 'Can only manage users in your fellowship' });
+                }
+
+                // Must be president or secgen
+                if (!['PRESIDENCY', 'SECRETARY_GENERAL'].includes(req.user.department)) {
+                    return res.status(403).json({ error: 'Only President or Secretary General can assign roles' });
+                }
+
+                // Can only create EXECUTIVE, WORKER, or GENERAL roles
+                if (!['EXECUTIVE', 'WORKER', 'GENERAL'].includes(role)) {
+                    return res.status(403).json({ error: 'Can only assign EXECUTIVE, WORKER, or GENERAL roles' });
+                }
+            }
+
+            const user = await prisma.user.update({
+                where: { id: parseInt(id) },
+                data: { role, department }
+            });
+
+            const { password: _, ...userWithoutPassword } = user;
+            console.log(`✅ Role assigned: ${user.email} → ${role} (${department})`);
+            res.json(userWithoutPassword);
+        } catch (error) {
+            console.error('Assign role error:', error);
+            res.status(500).json({ error: 'Failed to assign role' });
+        }
+    }
+);
+
+// Create user in fellowship (super admin or president/secgen)
+app.post('/api/admin/fellowships/:id/users',
+    authenticateToken,
+    authorizeRoles('SUPER_ADMIN', 'EXECUTIVE'),
+    async (req, res) => {
+        const { name, email, password, role, department } = req.body;
+        const fellowshipId = parseInt(req.params.id);
+
+        try {
+            // Authorization checks
+            if (req.user.role !== 'SUPER_ADMIN') {
+                // Must be in same fellowship
+                if (req.user.fellowshipId !== fellowshipId) {
+                    return res.status(403).json({ error: 'Can only create users in your fellowship' });
+                }
+
+                // Must be president or secgen
+                if (!['PRESIDENCY', 'SECRETARY_GENERAL'].includes(req.user.department)) {
+                    return res.status(403).json({ error: 'Only President or Secretary General can create users' });
+                }
+
+                // Can only create EXECUTIVE, WORKER, or GENERAL
+                if (!['EXECUTIVE', 'WORKER', 'GENERAL'].includes(role)) {
+                    return res.status(403).json({ error: 'Can only create EXECUTIVE, WORKER, or GENERAL roles' });
+                }
+            }
+
+            // Check if email already exists
+            const existingUser = await prisma.user.findUnique({
+                where: { email }
+            });
+
+            if (existingUser) {
+                return res.status(400).json({ error: 'Email already registered' });
+            }
+
+            const hashedPassword = await hashPassword(password);
+            const user = await prisma.user.create({
+                data: {
+                    name,
+                    email,
+                    password: hashedPassword,
+                    role,
+                    department,
+                    fellowshipId
+                }
+            });
+
+            const { password: _, ...userWithoutPassword } = user;
+            console.log(`✅ User created: ${user.email} → ${role} (${department}) in fellowship ${fellowshipId}`);
+            res.json(userWithoutPassword);
+        } catch (error) {
+            console.error('Create user error:', error);
+            res.status(500).json({ error: 'Failed to create user' });
+        }
+    }
+);
+
 app.listen(port, () => {
     console.log(`🚀 Server running at http://localhost:${port}`);
     console.log(`📊 Prisma connected to database`);
