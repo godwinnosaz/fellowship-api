@@ -1,5 +1,3 @@
-
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -9,55 +7,54 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-
 model Fellowship {
-  id            Int            @id @default(autoincrement())
-  name          String
-  code          String         @unique // The login code (e.g., "TCCF")
-  logo          String?        // Logo URL
-  address       String?
-  school        String?
-  events        Event[]
-  resources     Resource[]
-  users         User[]
-  transactions  Transaction[]
-  songs         Song[]
-  attendance    Attendance[]
-  mediaPosts    MediaPost[]
-  sessions      Session[]
-  tasks         Task[]
-  announcements Announcement[]
-  firstTimers   FirstTimer[]
-  prayerRequests PrayerRequest[]
-  budgets       Budget[]
-  calendarEvents CalendarEvent[]
+  id              Int              @id @default(autoincrement())
+  name            String
+  code            String           @unique // The login code (e.g., "TCCF")
+  logo            String? // Logo URL
+  address         String?
+  school          String?
+  events          Event[]
+  resources       Resource[]
+  users           User[]
+  transactions    Transaction[]
+  songs           Song[]
+  attendance      Attendance[]
+  mediaPosts      MediaPost[]
+  sessions        Session[]
+  tasks           Task[]
+  announcements   Announcement[]
+  firstTimers     FirstTimer[]
+  prayerRequests  PrayerRequest[]
+  budgets         Budget[]
+  calendarEvents  CalendarEvent[]
   expenseRequests ExpenseRequest[]
-  publicPosts   PublicPost[]
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
+  publicPosts     PublicPost[]
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
 }
 
 model User {
-  id                Int        @id @default(autoincrement())
-  name              String
-  email             String     @unique
-  username          String?    @unique // Member ID for login
-  password          String
-  role              String     // "GENERAL", "WORKER", "EXECUTIVE", "SUPER_ADMIN"
-  department        String?    // "FINANCE", "MUSIC", "PROTOCOL", "MEDIA", "PRESIDENCY", "ORGANIZING"
-  isVerified        Boolean    @default(false)
-  resetPasswordToken String?
+  id                   Int            @id @default(autoincrement())
+  name                 String
+  email                String         @unique
+  username             String?        @unique // Member ID for login
+  password             String
+  role                 String // "GENERAL", "WORKER", "EXECUTIVE", "SUPER_ADMIN"
+  department           String? // "FINANCE", "MUSIC", "PROTOCOL", "MEDIA", "PRESIDENCY", "ORGANIZING"
+  isVerified           Boolean        @default(false)
+  resetPasswordToken   String?
   resetPasswordExpires DateTime?
-  fellowship   Fellowship? @relation(fields: [fellowshipId], references: [id])
-  fellowshipId Int?       // Optional for SUPER_ADMIN
-  assignedTasks Task[]   @relation("AssignedTasks")
-  createdTasks Task[]    @relation("CreatedTasks")
-  announcements Announcement[]
-  followUps    FollowUp[]
-  receipts     Receipt[]
-  publicPosts  PublicPost[]   @relation("createdPosts")
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
+  fellowship           Fellowship?    @relation(fields: [fellowshipId], references: [id])
+  fellowshipId         Int? // Optional for SUPER_ADMIN
+  assignedTasks        Task[]         @relation("AssignedTasks")
+  createdTasks         Task[]         @relation("CreatedTasks")
+  announcements        Announcement[]
+  followUps            FollowUp[]
+  receipts             Receipt[]
+  publicPosts          PublicPost[]   @relation("createdPosts")
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
 }
 
 model Task {
@@ -138,7 +135,7 @@ model Budget {
   id           Int        @id @default(autoincrement())
   title        String
   amount       Float
-  period       String     // "Monthly", "Quarterly", "Annual"
+  period       String // "Monthly", "Quarterly", "Annual"
   department   String?
   status       String     @default("DRAFT") // "DRAFT", "SUBMITTED", "APPROVED", "REJECTED"
   approvedBy   Int?
@@ -164,7 +161,7 @@ model CalendarEvent {
   title        String
   date         DateTime
   description  String?
-  type         String     // "Exam", "Holiday", "Fellowship Event", "Academic"
+  type         String // "Exam", "Holiday", "Fellowship Event", "Academic"
   fellowship   Fellowship @relation(fields: [fellowshipId], references: [id])
   fellowshipId Int
   createdAt    DateTime   @default(now())
@@ -177,7 +174,7 @@ model Event {
   date         String
   time         String
   location     String
-  type         String     // "Service", "Study", "Youth", "Other"
+  type         String // "Service", "Study", "Youth", "Other"
   status       String     @default("UPCOMING") // "UPCOMING", "COMPLETED", "CANCELLED"
   fellowship   Fellowship @relation(fields: [fellowshipId], references: [id])
   fellowshipId Int
@@ -186,7 +183,7 @@ model Event {
 model Resource {
   id           Int        @id @default(autoincrement())
   title        String
-  type         String     // "PDF", "Video", "Audio"
+  type         String // "PDF", "Video", "Audio"
   url          String
   size         String?
   fellowship   Fellowship @relation(fields: [fellowshipId], references: [id])
@@ -195,8 +192,8 @@ model Resource {
 
 model Transaction {
   id           Int        @id @default(autoincrement())
-  type         String     // "INCOME", "EXPENSE"
-  category     String     // "TITHE", "OFFERING", "LOGISTICS", etc.
+  type         String // "INCOME", "EXPENSE"
+  category     String // "TITHE", "OFFERING", "LOGISTICS", etc.
   amount       Float
   description  String
   date         DateTime   @default(now())
@@ -206,7 +203,6 @@ model Transaction {
   fellowship   Fellowship @relation(fields: [fellowshipId], references: [id])
   fellowshipId Int
   receipts     Receipt[]
-  publicPosts  PublicPost[]   @relation("createdPosts")
 }
 
 model Song {
@@ -226,16 +222,16 @@ model Attendance {
   womenCount    Int
   childrenCount Int
   total         Int
-  serviceType   String     // "Sunday Service", "Bible Study"
+  serviceType   String // "Sunday Service", "Bible Study"
   fellowship    Fellowship @relation(fields: [fellowshipId], references: [id])
   fellowshipId  Int
 }
 
 model MediaPost {
   id            Int        @id @default(autoincrement())
-  platform      String     // "Facebook", "Instagram", "YouTube"
+  platform      String // "Facebook", "Instagram", "YouTube"
   content       String
-  status        String     // "Scheduled", "Posted"
+  status        String // "Scheduled", "Posted"
   scheduledDate String
   fellowship    Fellowship @relation(fields: [fellowshipId], references: [id])
   fellowshipId  Int
@@ -270,12 +266,11 @@ model ExpenseRequest {
   updatedAt    DateTime   @updatedAt
 }
 
-
 model PublicPost {
   id           Int        @id @default(autoincrement())
   title        String
   content      String
-  type         String     // "ANNOUNCEMENT", "NEWSLETTER", "UPDATE", "EVENT"
+  type         String // "ANNOUNCEMENT", "NEWSLETTER", "UPDATE", "EVENT"
   fellowship   Fellowship @relation(fields: [fellowshipId], references: [id])
   fellowshipId Int
   createdBy    User       @relation(name: "createdPosts", fields: [createdById], references: [id])
@@ -285,6 +280,3 @@ model PublicPost {
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 }
-
-
-
