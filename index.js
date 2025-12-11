@@ -1404,6 +1404,26 @@ app.post('/api/admin/fellowships/:id/users',
 // PUBLIC POSTS - Landing Page Feed  
 // ============================================================================
 
+
+// Get all fellowships (public endpoint for registration)
+app.get('/api/public/fellowships', async (req, res) => {
+    try {
+        const fellowships = await prisma.fellowship.findMany({
+            select: {
+                id: true,
+                name: true,
+                code: true,
+                school: true,
+                logo: true
+            },
+            orderBy: { name: 'asc' }
+        });
+        res.json(fellowships);
+    } catch (error) {
+        console.error('Get public fellowships error:', error);
+        res.status(500).json({ error: 'Failed to fetch fellowships' });
+    }
+});
 // Get all public posts (no authentication required)
 app.get('/api/public/posts', async (req, res) => {
     try {
@@ -1463,4 +1483,5 @@ app.listen(port, () => {
     console.log(`🚀 Server running at http://localhost:${port}`);
     console.log(`📊 Prisma connected to database`);
 });
+
 

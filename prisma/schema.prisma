@@ -31,7 +31,8 @@ model Fellowship {
   prayerRequests PrayerRequest[]
   budgets       Budget[]
   calendarEvents CalendarEvent[]
-  expenseRequests ExpenseRequest[]`r`n  publicPosts   PublicPost[]
+  expenseRequests ExpenseRequest[]
+  publicPosts   PublicPost[]
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
 }
@@ -53,7 +54,8 @@ model User {
   createdTasks Task[]    @relation("CreatedTasks")
   announcements Announcement[]
   followUps    FollowUp[]
-  receipts     Receipt[]`r`n  publicPosts  PublicPost[]   @relation("createdPosts")
+  receipts     Receipt[]
+  publicPosts  PublicPost[]   @relation("createdPosts")
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 }
@@ -282,5 +284,6 @@ model PublicPost {
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 }
+
 
 
