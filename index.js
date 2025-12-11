@@ -1453,7 +1453,7 @@ app.post('/api/posts',
     authorizeRoles('EXECUTIVE', 'SUPER_ADMIN'),
     async (req, res) => {
         const { title, content, type, isPublic, imageUrl } = req.body;
-        
+
         try {
             const post = await prisma.publicPost.create({
                 data: {
@@ -1470,8 +1470,8 @@ app.post('/api/posts',
                     createdBy: { select: { name: true } }
                 }
             });
-            
-            console.log(`? Public post created: ` by `);
+
+            console.log(`✅ Public post created: ${newPost.title} by ${user.name}`);
             res.json(post);
         } catch (error) {
             console.error('Create post error:', error);
