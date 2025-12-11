@@ -205,7 +205,8 @@ model Transaction {
   approvedAt   DateTime?
   fellowship   Fellowship @relation(fields: [fellowshipId], references: [id])
   fellowshipId Int
-  receipts     Receipt[]`r`n  publicPosts  PublicPost[]   @relation("createdPosts")
+  receipts     Receipt[]
+  publicPosts  PublicPost[]   @relation("createdPosts")
 }
 
 model Song {
