@@ -857,16 +857,35 @@ app.delete('/api/resources/:id', async (req, res) => {
 
 // Get Transactions
 app.get('/api/transactions', async (req, res) => {
-    const { fellowshipId } = req.query;
+    const { fellowshipId, status, type } = req.query;
     if (!fellowshipId) return res.status(400).json({ error: 'Missing fellowshipId' });
 
     try {
+        const where = { fellowshipId: parseInt(fellowshipId) };
+        if (status) where.status = status;
+        if (type) where.type = type;
+
         const transactions = await prisma.transaction.findMany({
-            where: { fellowshipId: parseInt(fellowshipId) },
+            where,
             include: { receipts: true },
             orderBy: { date: 'desc' }
         });
         res.json(transactions);
+    } catch (error) {
+        res.status(500).json({ error: 'Internal Server Error' });
+    }
+});
+
+// Get Single Transaction
+app.get('/api/transactions/:id', async (req, res) => {
+    const { id } = req.params;
+    try {
+        const transaction = await prisma.transaction.findUnique({
+            where: { id: parseInt(id) },
+            include: { receipts: true }
+        });
+        if (!transaction) return res.status(404).json({ error: 'Transaction not found' });
+        res.json(transaction);
     } catch (error) {
         res.status(500).json({ error: 'Internal Server Error' });
     }
@@ -910,6 +929,132 @@ app.put('/api/transactions/:id/approve', authenticateToken, authorizeRoles('EXEC
         res.status(500).json({ error: 'Failed to approve transaction' });
     }
 });
+
+// ============================================================================
+// DASHBOARD STATISTICS
+// ============================================================================
+
+// Get Dashboard Stats (for Committee/Executive dashboards)
+app.get('/api/dashboard/stats', authenticateToken, async (req, res) => {
+    const { fellowshipId, month, year } = req.query;
+
+    if (!fellowshipId) {
+        return res.status(400).json({ error: 'Missing fellowshipId' });
+    }
+
+    try {
+        const fId = parseInt(fellowshipId);
+
+        // Total members
+        const totalMembers = await prisma.user.count({
+            where: { fellowshipId: fId }
+        });
+
+        // Active workers (EXECUTIVE or WORKER role)
+        const activeWorkers = await prisma.user.count({
+            where: {
+                fellowshipId: fId,
+                role: { in: ['EXECUTIVE', 'WORKER'] }
+            }
+        });
+
+        // Tasks statistics
+        const pendingTasks = await prisma.task.count({
+            where: {
+                fellowshipId: fId,
+                status: { in: ['PENDING', 'IN_PROGRESS'] }
+            }
+        });
+
+        const completedTasks = await prisma.task.count({
+            where: {
+                fellowshipId: fId,
+                status: 'COMPLETED'
+            }
+        });
+
+        // Financial statistics (current month or selected month)
+        let startOfMonth, endOfMonth;
+
+        if (month && year) {
+            startOfMonth = new Date(parseInt(year), parseInt(month), 1);
+            endOfMonth = new Date(parseInt(year), parseInt(month) + 1, 0);
+        } else {
+            const now = new Date();
+            startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+            endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+        }
+
+        const thisMonthTransactions = await prisma.transaction.findMany({
+            where: {
+                fellowshipId: fId,
+                date: {
+                    gte: startOfMonth,
+                    lte: endOfMonth
+                }
+            }
+        });
+
+        const thisMonthIncome = thisMonthTransactions
+            .filter(t => t.type === 'INCOME')
+            .reduce((sum, t) => sum + parseFloat(t.amount.toString()), 0);
+
+        const thisMonthExpense = thisMonthTransactions
+            .filter(t => t.type === 'EXPENSE')
+            .reduce((sum, t) => sum + parseFloat(t.amount.toString()), 0);
+
+        // Total financials (all time)
+        const allTransactions = await prisma.transaction.findMany({
+            where: { fellowshipId: fId }
+        });
+
+        const totalIncome = allTransactions
+            .filter(t => t.type === 'INCOME')
+            .reduce((sum, t) => sum + parseFloat(t.amount.toString()), 0);
+
+        const totalExpense = allTransactions
+            .filter(t => t.type === 'EXPENSE')
+            .reduce((sum, t) => sum + parseFloat(t.amount.toString()), 0);
+
+        // Pending approvals
+        const pendingApprovals = await prisma.transaction.count({
+            where: {
+                fellowshipId: fId,
+                status: 'PENDING'
+            }
+        });
+
+        // Upcoming events (next 30 days)
+        const now = new Date();
+        const thirtyDaysFromNow = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+
+        const upcomingEvents = await prisma.event.count({
+            where: {
+                fellowshipId: fId,
+                date: {
+                    gte: now,
+                    lte: thirtyDaysFromNow
+                }
+            }
+        });
+
+        totalMembers,
+            activeWorkers,
+            pendingTasks,
+            completedTasks,
+            thisMonthIncome,
+            thisMonthExpense,
+            totalIncome,
+            totalExpense,
+            pendingApprovals,
+            upcomingEvents
+    });
+    } catch (error) {
+    console.error('Dashboard stats error:', error);
+    res.status(500).json({ error: 'Failed to fetch dashboard statistics' });
+}
+});
+
 
 // Upload Receipt
 app.post('/api/receipts', authenticateToken, upload.single('receipt'), async (req, res) => {
@@ -976,6 +1121,29 @@ app.post('/api/users', authenticateToken, authorizeRoles('EXECUTIVE'), async (re
         res.json(userWithoutPassword);
     } catch (error) {
         res.status(500).json({ error: 'Failed to create user' });
+    }
+});
+
+// Update User (Admin)
+app.put('/api/users/:id', authenticateToken, authorizeRoles('EXECUTIVE'), async (req, res) => {
+    const { id } = req.params;
+    const { name, email, role, department } = req.body;
+
+    try {
+        const user = await prisma.user.update({
+            where: { id: parseInt(id) },
+            data: {
+                name,
+                email,
+                role,
+                department
+            }
+        });
+
+        const { password: _, ...userWithoutPassword } = user;
+        res.json(userWithoutPassword);
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to update user' });
     }
 });
 
