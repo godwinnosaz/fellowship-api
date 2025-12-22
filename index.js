@@ -1038,7 +1038,8 @@ app.get('/api/dashboard/stats', authenticateToken, async (req, res) => {
             }
         });
 
-        totalMembers,
+        res.json({
+            totalMembers,
             activeWorkers,
             pendingTasks,
             completedTasks,
@@ -1048,11 +1049,11 @@ app.get('/api/dashboard/stats', authenticateToken, async (req, res) => {
             totalExpense,
             pendingApprovals,
             upcomingEvents
-    });
+        });
     } catch (error) {
-    console.error('Dashboard stats error:', error);
-    res.status(500).json({ error: 'Failed to fetch dashboard statistics' });
-}
+        console.error('Dashboard stats error:', error);
+        res.status(500).json({ error: 'Failed to fetch dashboard statistics' });
+    }
 });
 
 
