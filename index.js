@@ -74,9 +74,59 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Enhanced Login with JWT
 app.post('/api/login', async (req, res) => {
-    const { code, email, password } = req.body;
+    const { code, email, password, memberIdOrEmail, fellowshipCode } = req.body;
 
     try {
+        // Member Login (with memberIdOrEmail, fellowshipCode, and password)
+        if (memberIdOrEmail && fellowshipCode && password) {
+            // Verify fellowship exists
+            const fellowship = await prisma.fellowship.findUnique({
+                where: { code: fellowshipCode.toUpperCase() }
+            });
+
+            if (!fellowship) {
+                return res.status(401).json({ error: 'Invalid Fellowship Code' });
+            }
+
+            // Find user by email OR username within this fellowship
+            const user = await prisma.user.findFirst({
+                where: {
+                    AND: [
+                        { fellowshipId: fellowship.id },
+                        {
+                            OR: [
+                                { email: memberIdOrEmail },
+                                { username: memberIdOrEmail },
+                                { membershipId: memberIdOrEmail }
+                            ]
+                        }
+                    ]
+                },
+                include: { fellowship: true }
+            });
+
+            if (!user) {
+                return res.status(401).json({ error: 'Invalid Username/Email or Password' });
+            }
+
+            // Compare password
+            const isPasswordValid = await comparePassword(password, user.password);
+            if (!isPasswordValid) {
+                return res.status(401).json({ error: 'Invalid Username/Email or Password' });
+            }
+
+            // Generate JWT token
+            const token = generateToken(user);
+            const { password: _, ...userWithoutPassword } = user;
+
+            return res.json({
+                user: userWithoutPassword,
+                fellowship: user.fellowship,
+                token
+            });
+        }
+
+        // Executive/Admin Login (email and password)
         if (email && password) {
             // User Login (Executive/Worker/General)
             const user = await prisma.user.findUnique({
@@ -116,7 +166,7 @@ app.post('/api/login', async (req, res) => {
                 res.status(401).json({ error: 'Invalid Fellowship Code' });
             }
         } else {
-            res.status(400).json({ error: 'Missing credentials' });
+            res.status(400).json({ error: 'Missing credentials. Please provide either (email & password), (memberIdOrEmail & fellowshipCode & password), or (code)' });
         }
     } catch (error) {
         console.error('Login error:', error);
