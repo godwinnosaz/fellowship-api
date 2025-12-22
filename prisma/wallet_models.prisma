@@ -1,0 +1,105 @@
+
+// ============================================
+// WALLET SYSTEM MODELS
+// ============================================
+
+// Unit Wallet - One per department per fellowship
+model UnitWallet {
+  id                   Int                  @id @default(autoincrement())
+  fellowship           Fellowship           @relation(fields: [fellowshipId], references: [id])
+  fellowshipId         Int
+  unitDepartment       String // 'FINANCE', 'BIBLE_STUDY', 'PRAYER', 'WELFARE', etc.
+  balance              Float                @default(0.00)
+  vpayVirtualAccount   String?              @unique // VPay-generated account number
+  vpayAccountName      String? // Account name on VPay
+  status               String               @default("ACTIVE") // "ACTIVE", "SUSPENDED", "CLOSED"
+  transactions         WalletTransaction[]
+  donations            MemberDonation[]
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+
+  @@unique([fellowshipId, unitDepartment])
+  @@index([fellowshipId])
+  @@index([vpayVirtualAccount])
+}
+
+// Wallet Transaction - Deposits and Withdrawals
+model WalletTransaction {
+  id              Int                   @id @default(autoincrement())
+  wallet          UnitWallet            @relation(fields: [walletId], references: [id])
+  walletId        Int
+  transactionType String // 'DEPOSIT', 'WITHDRAWAL', 'COMMISSION_DEDUCTION'
+  amount          Float
+  description     String?
+  initiatedBy     User?                 @relation(name: "InitiatedWithdrawals", fields: [initiatedById], references: [id])
+  initiatedById   Int?
+  vpayReference   String?               @unique // VPay transaction reference
+  bankReference   String? // Bank transfer reference for withdrawals
+  status          String                @default("PENDING") // 'PENDING', 'APPROVED', 'REJECTED', 'COMPLETED', 'FAILED'
+  approvals       TransactionApproval[]
+  commission      BrainiacCommission?
+  failureReason   String? // If failed, why?
+  completedAt     DateTime?
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+
+  @@index([walletId])
+  @@index([status])
+  @@index([vpayReference])
+}
+
+// Transaction Approval Chain - Multi-level approval workflow
+model TransactionApproval {
+  id              Int               @id @default(autoincrement())
+  transaction     WalletTransaction @relation(fields: [transactionId], references: [id])
+  transactionId   Int
+  approverRole    String // 'SECRETARY_GENERAL', 'PRESIDENCY', 'VICE_PRESIDENT', 'FINANCIAL_SECRETARY'
+  approver        User?             @relation(fields: [approverId], references: [id])
+  approverId      Int?
+  approvalStatus  String            @default("PENDING") // 'PENDING', 'APPROVED', 'REJECTED'
+  comments        String?
+  approvalOrder   Int // 1=SEC_GEN, 2=PRESIDENT, 3=VP, 4=SEC_GEN_FINAL, 5=FINANCIAL_SEC
+  approvedAt      DateTime?
+  createdAt       DateTime          @default(now())
+
+  @@unique([transactionId, approvalOrder])
+  @@index([transactionId])
+  @@index([approvalStatus])
+}
+
+// Member Donations - Track individual member contributions
+model MemberDonation {
+  id             Int        @id @default(autoincrement())
+  wallet         UnitWallet @relation(fields: [walletId], references: [id])
+  walletId       Int
+  member         User       @relation(fields: [memberId], references: [id])
+  memberId       Int
+  amount         Float
+  paymentMethod  String     @default("VPAY_TRANSFER") // 'VPAY_TRANSFER', 'CASH', 'BANK_TRANSFER'
+  vpayReference  String?    @unique
+  donationNote   String? // Optional note from donor
+  isAnonymous    Boolean    @default(false) // Hide donor from public view
+  createdAt      DateTime   @default(now())
+
+  @@index([walletId])
+  @@index([memberId])
+  @@index([vpayReference])
+}
+
+// Brainiac Commission - Track SaaS revenue
+model BrainiacCommission {
+  id              Int               @id @default(autoincrement())
+  fellowship      Fellowship        @relation(fields: [fellowshipId], references: [id])
+  fellowshipId    Int
+  transaction     WalletTransaction @relation(fields: [transactionId], references: [id])
+  transactionId   Int               @unique
+  originalAmount  Float // Total amount before fees
+  vpayFee         Float // VPay's 1.5% fee
+  brainiacCut     Float // Our 0.5-1% commission
+  netAmount       Float // Amount credited to fellowship
+  commissionRate  Float             @default(0.005) // 0.5% default
+  createdAt       DateTime          @default(now())
+
+  @@index([fellowshipId])
+  @@index([createdAt])
+}
