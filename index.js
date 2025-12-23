@@ -72,6 +72,31 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 // AUTHENTICATION ROUTES
 // ============================================================================
 
+// Verify Fellowship Code (Public)
+app.get('/api/public/fellowship/verify/:code', async (req, res) => {
+    const { code } = req.params;
+    try {
+        const fellowship = await prisma.fellowship.findUnique({
+            where: { code: code.toUpperCase() },
+            select: {
+                id: true,
+                name: true,
+                code: true,
+                logo: true
+            }
+        });
+
+        if (!fellowship) {
+            return res.status(404).json({ error: 'Fellowship not found' });
+        }
+
+        res.json(fellowship);
+    } catch (error) {
+        console.error('Verify fellowship error:', error);
+        res.status(500).json({ error: 'Failed to verify fellowship' });
+    }
+});
+
 // Enhanced Login with JWT
 // Public Fellowship Registration
 app.post('/api/public/register-fellowship', async (req, res) => {
