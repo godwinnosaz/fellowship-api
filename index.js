@@ -664,6 +664,66 @@ app.delete('/api/announcements/:id', authenticateToken, authorizeRoles('EXECUTIV
     }
 });
 
+
+// Send Message (SMS/Email) - Sec Gen & Media
+app.post('/api/messages/send', authenticateToken, authorizeRoles('EXECUTIVE'), async (req, res) => {
+    const { recipients, content, channels, fellowshipId } = req.body;
+    // recipients: { roles: [], departments: [] }
+    // channels: ['SMS', 'EMAIL', 'WHATSAPP']
+
+    try {
+        // 1. Authorization Check (Sec Gen, Asst Sec Gen, Media, Presidency)
+        const allowedDepts = ['SECRETARY_GENERAL', 'ASSISTANT_SECRETARY_GENERAL', 'MEDIA', 'PRESIDENCY'];
+        if (!allowedDepts.includes(req.user.department) && req.user.role !== 'SUPER_ADMIN') {
+            return res.status(403).json({ error: 'Unauthorized to send broadcast messages' });
+        }
+
+        // 2. Resolve Recipients
+        const where = {
+            fellowshipId: parseInt(fellowshipId),
+            OR: []
+        };
+
+        if (recipients.roles && recipients.roles.length > 0) {
+            where.OR.push({ role: { in: recipients.roles } });
+        }
+        if (recipients.departments && recipients.departments.length > 0) {
+            where.OR.push({ department: { in: recipients.departments } });
+        }
+
+        let targetUsers = [];
+        if (where.OR.length > 0) {
+            targetUsers = await prisma.user.findMany({
+                where,
+                select: { id: true, name: true, email: true, phone: true }
+            });
+        }
+
+        // 3. Send Messages (Mock Implementation)
+        const results = {
+            total_targets: targetUsers.length,
+            sms_sent: 0,
+            email_sent: 0,
+            whatsapp_sent: 0
+        };
+
+        console.log(`📢 Broadcasting message to ${targetUsers.length} users via ${channels.join(', ')}`);
+
+        if (channels.includes('SMS')) {
+            results.sms_sent = targetUsers.length;
+        }
+        if (channels.includes('EMAIL')) {
+            results.email_sent = targetUsers.length;
+        }
+
+        res.json({ success: true, report: results });
+
+    } catch (error) {
+        console.error('Send message error:', error);
+        res.status(500).json({ error: 'Failed to send messages' });
+    }
+});
+
 // ============================================================================
 // MEMBERS & USERS
 // ============================================================================
@@ -1898,6 +1958,87 @@ app.put('/api/admin/users/:id/role',
     }
 );
 
+
+// Public: Register a new Fellowship (Onboarding)
+app.post('/api/public/register-fellowship', async (req, res) => {
+    const {
+        fellowshipName,
+        fellowshipCode,
+        address,
+        adminName,
+        adminEmail,
+        adminPassword,
+        adminPhone
+    } = req.body;
+
+    try {
+        // 1. Check if fellowship code exists
+        const existingFellowship = await prisma.fellowship.findUnique({
+            where: { code: fellowshipCode.toUpperCase() }
+        });
+
+        if (existingFellowship) {
+            return res.status(400).json({ error: 'Fellowship code already taken' });
+        }
+
+        // 2. Check if admin email exists (Global check)
+        const existingUser = await prisma.user.findUnique({
+            where: { email: adminEmail }
+        });
+
+        if (existingUser) {
+            return res.status(400).json({ error: 'Email already registered' });
+        }
+
+        // 3. Create Fellowship
+        const fellowship = await prisma.fellowship.create({
+            data: {
+                name: fellowshipName,
+                code: fellowshipCode.toUpperCase(),
+                address,
+                unitSettings: '{}' // Default empty config
+            }
+        });
+
+        // 4. Create Admin User (President)
+        const hashedPassword = await hashPassword(adminPassword);
+        const user = await prisma.user.create({
+            data: {
+                name: adminName,
+                email: adminEmail,
+                password: hashedPassword,
+                phone: adminPhone,
+                role: 'EXECUTIVE',
+                department: 'PRESIDENCY',
+                fellowshipId: fellowship.id,
+                isVerified: true // Auto-verify admin
+            }
+        });
+
+        // 5. Generate Auth Token
+        const token = generateToken({
+            id: user.id,
+            email: user.email,
+            role: user.role,
+            department: user.department,
+            fellowshipId: fellowship.id
+        });
+
+        const { password: _, ...userWithoutPassword } = user;
+
+        res.json({
+            message: 'Fellowship registered successfully',
+            fellowship,
+            user: userWithoutPassword,
+            token
+        });
+
+    } catch (error) {
+        console.error('Register fellowship error:', error);
+        res.status(500).json({ error: 'Failed to register fellowship' });
+    }
+});
+
 // Create user in fellowship (super admin or president/secgen)
 app.post('/api/admin/fellowships/:id/users',
     authenticateToken,
@@ -2376,10 +2517,19 @@ app.get('/api/withdrawals/pending-approvals', authenticateToken, async (req, res
     const { fellowshipId } = req.query;
 
     try {
-        // Find approvals pending for user's role
+        // Determine effective approver roles (Role + Department + Delegations)
+        const effectiveRoles = [req.user.role, req.user.department];
+        if (req.user.department === 'ASSISTANT_SECRETARY_GENERAL') {
+            effectiveRoles.push('SECRETARY_GENERAL');
+        }
+
+
+        
+
+        // Find approvals pending for user's effective roles
         const approvals = await prisma.transactionApproval.findMany({
             where: {
-                approverRole: req.user.role,
+                approverRole: { in: effectiveRoles },
                 approvalStatus: 'PENDING',
                 transaction: {
                     wallet: {
@@ -2429,10 +2579,16 @@ app.post('/api/withdrawals/approve/:id', authenticateToken, authorizeRoles('EXEC
     const { comments } = req.body;
 
     try {
+        // Determine effective approver roles
+        const effectiveRoles = [req.user.role, req.user.department];
+        if (req.user.department === 'ASSISTANT_SECRETARY_GENERAL') {
+            effectiveRoles.push('SECRETARY_GENERAL');
+        }
+
         const approval = await prisma.transactionApproval.findFirst({
             where: {
                 transactionId: parseInt(id),
-                approverRole: req.user.role,
+                approverRole: { in: effectiveRoles },
                 approvalStatus: 'PENDING'
             },
             include: {
@@ -2514,10 +2670,16 @@ app.post('/api/withdrawals/reject/:id', authenticateToken, authorizeRoles('EXECU
     const { comments } = req.body;
 
     try {
+        // Determine effective approver roles
+        const effectiveRoles = [req.user.role, req.user.department];
+        if (req.user.department === 'ASSISTANT_SECRETARY_GENERAL') {
+            effectiveRoles.push('SECRETARY_GENERAL');
+        }
+
         const approval = await prisma.transactionApproval.findFirst({
             where: {
                 transactionId: parseInt(id),
-                approverRole: req.user.role,
+                approverRole: { in: effectiveRoles },
                 approvalStatus: 'PENDING'
             }
         });
