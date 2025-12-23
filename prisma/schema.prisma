@@ -31,6 +31,7 @@ model Fellowship {
   expenseRequests ExpenseRequest[]
   publicPosts     PublicPost[]
   unitWallets     UnitWallet[] // Unit wallet system
+  unitSettings    String?      // JSON string for unit configuration (e.g. merging units)
   commissions     BrainiacCommission[] // Commission tracking
   createdAt       DateTime             @default(now())
   updatedAt       DateTime             @updatedAt

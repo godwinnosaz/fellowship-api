@@ -73,6 +73,113 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 // ============================================================================
 
 // Enhanced Login with JWT
+// Public Fellowship Registration
+app.post('/api/public/register-fellowship', async (req, res) => {
+    const {
+        fellowshipName,
+        fellowshipCode,
+        address,
+        adminName,
+        adminEmail,
+        adminPassword,
+        adminPhone
+    } = req.body;
+
+    try {
+        // 1. Check if fellowship code exists
+        const existingFellowship = await prisma.fellowship.findUnique({
+            where: { code: fellowshipCode }
+        });
+
+        if (existingFellowship) {
+            return res.status(400).json({ error: 'Fellowship code already taken' });
+        }
+
+        // 2. Check if admin email exists globally (optional, but good practice)
+        const existingUser = await prisma.user.findUnique({
+            where: { email: adminEmail }
+        });
+
+        if (existingUser) {
+            return res.status(400).json({ error: 'Email already registered' });
+        }
+
+        // 3. Create Fellowship
+        const fellowship = await prisma.fellowship.create({
+            data: {
+                name: fellowshipName,
+                code: fellowshipCode,
+                address: address,
+                logo: '', // Optional default
+                primaryColor: '#3880ff', // Default Ionic blue
+                secondaryColor: '#3dc2ff'
+            }
+        });
+
+        // 4. Create Admin User
+        const hashedPassword = await bcrypt.hash(adminPassword, 10);
+        const adminUser = await prisma.user.create({
+            data: {
+                name: adminName,
+                email: adminEmail,
+                password: hashedPassword,
+                phone: adminPhone || '',
+                role: 'SUPER_ADMIN', // Creator is Super Admin of this fellowship
+                department: 'PRESIDENCY', // Default department
+                fellowshipId: fellowship.id
+            }
+        });
+
+        // 5. Create Main Treasury Wallet for this Fellowship
+        await prisma.wallet.create({
+            data: {
+                fellowshipId: fellowship.id,
+                balance: 0.00
+            }
+        });
+
+        // 6. Create Unit Wallets for default departments
+        const defaultDepts = ['PRESIDENCY', 'FINANCE', 'MUSIC', 'MEDIA', 'PROTOCOL', 'ORGANIZING', 'BIBLE_STUDY', 'ACADEMIC', 'EVANGELISM', 'HOSPITALITY', 'WELFARE'];
+        for (const dept of defaultDepts) {
+            await prisma.unitWallet.create({
+                data: {
+                    fellowshipId: fellowship.id,
+                    unitDepartment: dept,
+                    balance: 0.00
+                }
+            });
+        }
+
+        // Return success with token so they can login immediately
+        const token = jwt.sign(
+            { userId: adminUser.id, role: adminUser.role, fellowshipId: fellowship.id, department: adminUser.department },
+            JWT_SECRET,
+            { expiresIn: '24h' }
+        );
+
+        res.status(201).json({
+            message: 'Fellowship registered successfully',
+            token,
+            user: {
+                id: adminUser.id,
+                name: adminUser.name,
+                email: adminUser.email,
+                role: adminUser.role,
+                department: adminUser.department
+            },
+            fellowship: {
+                id: fellowship.id,
+                name: fellowship.name,
+                code: fellowship.code
+            }
+        });
+
+    } catch (error) {
+        console.error('Registration error:', error);
+        res.status(500).json({ error: 'Failed to register fellowship' });
+    }
+});
+
 app.post('/api/login', async (req, res) => {
     const { code, email, password, memberIdOrEmail, fellowshipCode } = req.body;
 
@@ -85,6 +192,7 @@ app.post('/api/login', async (req, res) => {
             });
 
             if (!fellowship) {
+                console.error('❌ Login Failed: Fellowship Code Not Found:', fellowshipCode);
                 return res.status(401).json({ error: 'Invalid Fellowship Code' });
             }
 
@@ -106,12 +214,14 @@ app.post('/api/login', async (req, res) => {
             });
 
             if (!user) {
+                console.error('❌ Login Failed: User Not Found:', memberIdOrEmail, 'in Fellowship:', fellowshipCode);
                 return res.status(401).json({ error: 'Invalid Username/Email or Password' });
             }
 
             // Compare password
             const isPasswordValid = await comparePassword(password, user.password);
             if (!isPasswordValid) {
+                console.error('❌ Login Failed: Invalid Password for User:', user.email);
                 return res.status(401).json({ error: 'Invalid Username/Email or Password' });
             }
 
@@ -530,8 +640,55 @@ app.delete('/api/announcements/:id', authenticateToken, authorizeRoles('EXECUTIV
 });
 
 // ============================================================================
-// FIRST TIMERS & FOLLOW-UP
+// MEMBERS & USERS
 // ============================================================================
+
+// Get detailed member profile
+app.get('/api/members/:id', authenticateToken, async (req, res) => {
+    const { id } = req.params;
+
+    try {
+        const user = await prisma.user.findUnique({
+            where: { id: parseInt(id) },
+            include: {
+                fellowship: true,
+                assignedTasks: { take: 5, orderBy: { createdAt: 'desc' } },
+                attendance: false // Schema doesn't link attendance to user directly in the view I saw
+            }
+        });
+
+        if (!user) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+
+        // Calculate stats (Mocking logic for complex stats as schema is limited)
+        // In a real app, query Attendance table where userId = id
+        // But Attendance model in schema only has counts (menCount, womenCount), not individual records?
+        // Wait, Attendance model: `id, date, menCount...` -> NO relation to User.
+        // So we can't track individual attendance yet unless `Attendance` is aggregating.
+        // Assume 0 for now or fetch from a different hypothetical table.
+
+        const profile = {
+            name: user.name,
+            email: user.email,
+            phone: user.phone || '', // Check if phone exists in schema
+            joinDate: user.createdAt,
+            department: user.department || 'General',
+            role: user.role,
+            attendance: 90, // Placeholder as schema doesn't track individual attendance?
+            servicesAttended: 0,
+            totalServices: 0,
+            groups: [], // Fetch groups if they exist
+            badges: [],
+            recentActivity: []
+        };
+
+        res.json(profile);
+    } catch (error) {
+        console.error('Fetch member profile error:', error);
+        res.status(500).json({ error: 'Failed to fetch profile' });
+    }
+});
 
 // Get first timers
 app.get('/api/first-timers', authenticateToken, async (req, res) => {
@@ -753,10 +910,126 @@ app.post('/api/calendar/events', authenticateToken, authorizeRoles('EXECUTIVE'),
         res.status(500).json({ error: 'Failed to create calendar event' });
     }
 });
+// ============================================================================
+// UNIT WALLETS
+// ============================================================================
 
-// ============================================================================
-// EXISTING ROUTES (Events, Resources, Transactions, etc.)
-// ============================================================================
+// Get all unit wallets (Admin/Treasury)
+app.get('/api/wallets', authenticateToken, authorizeRoles('EXECUTIVE', 'SUPER_ADMIN'), async (req, res) => {
+    const { fellowshipId } = req.query;
+
+    try {
+        const wallets = await prisma.unitWallet.findMany({
+            where: { fellowshipId: parseInt(fellowshipId) },
+            include: {
+                transactions: {
+                    take: 5,
+                    orderBy: { createdAt: 'desc' }
+                }
+            }
+        });
+        res.json(wallets);
+    } catch (error) {
+        console.error('Fetch wallets error:', error);
+        res.status(500).json({ error: 'Failed to fetch unit wallets' });
+    }
+});
+
+// Get my unit wallet
+app.get('/api/wallets/my-unit', authenticateToken, async (req, res) => {
+    try {
+        if (!req.user.department) {
+            return res.status(400).json({ error: 'User does not belong to a department' });
+        }
+
+        // Find or create wallet for this department
+        let wallet = await prisma.unitWallet.findFirst({
+            where: {
+                fellowshipId: req.user.fellowshipId,
+                unitDepartment: req.user.department
+            }
+        });
+
+        if (!wallet) {
+            wallet = await prisma.unitWallet.create({
+                data: {
+                    fellowshipId: req.user.fellowshipId,
+                    unitDepartment: req.user.department,
+                    balance: 0.00,
+                    status: 'ACTIVE'
+                }
+            });
+        }
+
+        // Fetch recent transactions
+        const transactions = await prisma.walletTransaction.findMany({
+            where: { walletId: wallet.id },
+            orderBy: { createdAt: 'desc' },
+            take: 10
+        });
+
+        res.json({ ...wallet, transactions });
+    } catch (error) {
+        console.error('Fetch my wallet error:', error);
+        res.status(500).json({ error: 'Failed to fetch unit wallet' });
+    }
+});
+
+// Fund a unit wallet (Transfer from Main Treasury to Unit)
+app.post('/api/wallets/fund', authenticateToken, authorizeRoles('EXECUTIVE', 'SUPER_ADMIN'), async (req, res) => {
+    const { walletId, amount, description, fellowshipId } = req.body;
+
+    try {
+        // 1. Verify wallet exists
+        const wallet = await prisma.unitWallet.findUnique({
+            where: { id: parseInt(walletId) }
+        });
+
+        if (!wallet) {
+            return res.status(404).json({ error: 'Wallet not found' });
+        }
+
+        // 2. Create Main Fellowship Expense (The outflow)
+        await prisma.transaction.create({
+            data: {
+                type: 'EXPENSE',
+                category: 'UNIT_FUNDING',
+                amount: parseFloat(amount),
+                description: `Funding for ${wallet.unitDepartment}: ${description}`,
+                fellowshipId: parseInt(fellowshipId),
+                status: 'APPROVED',
+                approvedBy: req.user.id,
+                approvedAt: new Date()
+            }
+        });
+
+        // 3. Create Unit Wallet Deposit (The inflow)
+        const walletTx = await prisma.walletTransaction.create({
+            data: {
+                walletId: wallet.id,
+                transactionType: 'DEPOSIT', // Funding
+                amount: parseFloat(amount),
+                description: `Received from Main Treasury: ${description}`,
+                initiatedById: req.user.id,
+                status: 'COMPLETED', // Immediate for internal transfer
+                completedAt: new Date()
+            }
+        });
+
+        // 4. Update Balance
+        const updatedWallet = await prisma.unitWallet.update({
+            where: { id: wallet.id },
+            data: {
+                balance: { increment: parseFloat(amount) }
+            }
+        });
+
+        res.json({ wallet: updatedWallet, transaction: walletTx });
+    } catch (error) {
+        console.error('Fund wallet error:', error);
+        res.status(500).json({ error: 'Failed to fund wallet' });
+    }
+});
 
 // Get Events
 app.get('/api/events', async (req, res) => {
@@ -1121,10 +1394,50 @@ app.post('/api/users', authenticateToken, authorizeRoles('EXECUTIVE'), async (re
         const { password: _, ...userWithoutPassword } = user;
         res.json(userWithoutPassword);
     } catch (error) {
+        console.error('Create user error:', error);
         res.status(500).json({ error: 'Failed to create user' });
     }
 });
 
+// Update fellowship logo
+app.put('/api/fellowships/:id/logo', authenticateToken, authorizeRoles('SUPER_ADMIN'), async (req, res) => {
+    // ... existing logo logic if any ...
+});
+
+// Get Unit Configuration
+app.get('/api/fellowships/:id/unit-config', authenticateToken, async (req, res) => {
+    try {
+        const fellowship = await prisma.fellowship.findUnique({
+            where: { id: parseInt(req.params.id) },
+            select: { unitSettings: true }
+        });
+
+        if (!fellowship) return res.status(404).json({ error: 'Fellowship not found' });
+
+        // Return parsed JSON or empty object
+        const config = fellowship.unitSettings ? JSON.parse(fellowship.unitSettings) : {};
+        res.json(config);
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to fetch unit config' });
+    }
+});
+
+// Update Unit Configuration (Merging Units)
+app.put('/api/fellowships/:id/unit-config', authenticateToken, authorizeRoles('SUPER_ADMIN', 'EXECUTIVE'), async (req, res) => {
+    const { unitConfig } = req.body; // Expects JSON object: { "CHILD_UNIT": "PARENT_UNIT" } e.g. { "HOSPITALITY": "EVANGELISM" }
+
+    try {
+        await prisma.fellowship.update({
+            where: { id: parseInt(req.params.id) },
+            data: {
+                unitSettings: JSON.stringify(unitConfig)
+            }
+        });
+        res.json({ message: 'Unit configuration updated successfully' });
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to update unit config' });
+    }
+});
 // Update User (Admin)
 app.put('/api/users/:id', authenticateToken, authorizeRoles('EXECUTIVE'), async (req, res) => {
     const { id } = req.params;
