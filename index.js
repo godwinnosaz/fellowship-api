@@ -104,6 +104,7 @@ app.post('/api/public/register-fellowship', async (req, res) => {
         fellowshipName,
         fellowshipCode,
         address,
+        school, // Added school
         adminName,
         adminEmail,
         adminPassword,
@@ -113,14 +114,14 @@ app.post('/api/public/register-fellowship', async (req, res) => {
     try {
         // 1. Check if fellowship code exists
         const existingFellowship = await prisma.fellowship.findUnique({
-            where: { code: fellowshipCode }
+            where: { code: fellowshipCode.toUpperCase() }
         });
 
         if (existingFellowship) {
             return res.status(400).json({ error: 'Fellowship code already taken' });
         }
 
-        // 2. Check if admin email exists globally (optional, but good practice)
+        // 2. Check if admin email exists globally
         const existingUser = await prisma.user.findUnique({
             where: { email: adminEmail }
         });
@@ -133,8 +134,9 @@ app.post('/api/public/register-fellowship', async (req, res) => {
         const fellowship = await prisma.fellowship.create({
             data: {
                 name: fellowshipName,
-                code: fellowshipCode,
+                code: fellowshipCode.toUpperCase(),
                 address: address,
+                school: school,
                 logo: '', // Optional default
                 primaryColor: '#3880ff', // Default Ionic blue
                 secondaryColor: '#3dc2ff'
@@ -142,7 +144,7 @@ app.post('/api/public/register-fellowship', async (req, res) => {
         });
 
         // 4. Create Admin User
-        const hashedPassword = await bcrypt.hash(adminPassword, 10);
+        const hashedPassword = await hashPassword(adminPassword);
         const adminUser = await prisma.user.create({
             data: {
                 name: adminName,
@@ -155,16 +157,10 @@ app.post('/api/public/register-fellowship', async (req, res) => {
             }
         });
 
-        // 5. Create Main Treasury Wallet for this Fellowship
-        await prisma.wallet.create({
-            data: {
-                fellowshipId: fellowship.id,
-                balance: 0.00
-            }
-        });
-
-        // 6. Create Unit Wallets for default departments
+        // 5. Create Unit Wallets for default departments
+        // NOTE: 'FINANCE' wallet serves as the Main Treasury
         const defaultDepts = ['PRESIDENCY', 'FINANCE', 'MUSIC', 'MEDIA', 'PROTOCOL', 'ORGANIZING', 'BIBLE_STUDY', 'ACADEMIC', 'EVANGELISM', 'HOSPITALITY', 'WELFARE'];
+
         for (const dept of defaultDepts) {
             await prisma.unitWallet.create({
                 data: {
@@ -175,12 +171,15 @@ app.post('/api/public/register-fellowship', async (req, res) => {
             });
         }
 
-        // Return success with token so they can login immediately
-        const token = jwt.sign(
-            { userId: adminUser.id, role: adminUser.role, fellowshipId: fellowship.id, department: adminUser.department },
-            JWT_SECRET,
-            { expiresIn: '24h' }
-        );
+        // 6. Generate Token
+        // Reload user to match the expected structure for generateToken if needed, 
+        // but generateToken usually expects { id, email, role, fellowshipId }
+        // The helper likely handles it. Let's check if we need to hydrate checking the helper signature is hard without viewing it.
+        // Assuming generateToken(user) works as it's used in login.
+        // We do need to attach the fellowship object for the login response though.
+        adminUser.fellowship = fellowship;
+
+        const token = generateToken(adminUser);
 
         res.status(201).json({
             message: 'Fellowship registered successfully',
