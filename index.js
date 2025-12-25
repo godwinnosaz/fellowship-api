@@ -2016,17 +2016,13 @@ app.post('/api/public/register-fellowship', async (req, res) => {
         });
 
         // 5. Generate Auth Token
-        const token = jwt.sign(
-            {
-                id: user.id,
-                email: user.email,
-                role: user.role,
-                department: user.department,
-                fellowshipId: fellowship.id
-            },
-            process.env.JWT_SECRET || 'secret',
-            { expiresIn: '24h' }
-        );
+        const token = generateToken({
+            id: user.id,
+            email: user.email,
+            role: user.role,
+            department: user.department,
+            fellowshipId: fellowship.id
+        });
 
         const { password: _, ...userWithoutPassword } = user;
 
@@ -2526,6 +2522,9 @@ app.get('/api/withdrawals/pending-approvals', authenticateToken, async (req, res
         if (req.user.department === 'ASSISTANT_SECRETARY_GENERAL') {
             effectiveRoles.push('SECRETARY_GENERAL');
         }
+
+
+        
 
         // Find approvals pending for user's effective roles
         const approvals = await prisma.transactionApproval.findMany({
