@@ -138,8 +138,6 @@ app.post('/api/public/register-fellowship', async (req, res) => {
                 address: address,
                 school: school,
                 logo: '', // Optional default
-                primaryColor: '#3880ff', // Default Ionic blue
-                secondaryColor: '#3dc2ff'
             }
         });
 
