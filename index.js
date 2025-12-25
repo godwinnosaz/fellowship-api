@@ -206,11 +206,10 @@ app.post('/api/public/register-fellowship', async (req, res) => {
 });
 
 app.post('/api/login', async (req, res) => {
-    const { code, email, password, memberIdOrEmail, fellowshipCode } = req.body;
+    const { email, password, memberIdOrEmail, fellowshipCode } = req.body;
 
     try {
         let user;
-        let fellowship;
 
         // 1. Check for Super Admin (Global Login) if no fellowship code provided
         if ((!fellowshipCode || fellowshipCode.trim() === '') && (email || memberIdOrEmail)) {
@@ -224,7 +223,6 @@ app.post('/api/login', async (req, res) => {
 
             if (user && user.role === 'SUPER_ADMIN') {
                 console.log('🛡️ Super Admin Global Login:', loginEmail);
-                fellowship = user.fellowship; // Might be null or their creating fellowship
             } else {
                 return res.status(401).json({ error: 'Fellowship Code is required for standard members' });
             }
@@ -234,7 +232,7 @@ app.post('/api/login', async (req, res) => {
             const loginValue = memberIdOrEmail || email;
 
             // Verify fellowship exists
-            fellowship = await prisma.fellowship.findUnique({
+            const fellowship = await prisma.fellowship.findUnique({
                 where: { code: fellowshipCode.toUpperCase() }
             });
 
@@ -271,65 +269,21 @@ app.post('/api/login', async (req, res) => {
         if (!isPasswordValid) {
             return res.status(401).json({ error: 'Invalid Password' });
         }
-    }
 
-            // Generate JWT token
-            const token = generateToken(user);
-    const { password: _, ...userWithoutPassword } = user;
+        // Generate JWT token
+        const token = generateToken(user);
+        const { password: _, ...userWithoutPassword } = user;
 
-    return res.json({
-        user: userWithoutPassword,
-        fellowship: user.fellowship,
-        token
-    });
-}
+        return res.json({
+            user: userWithoutPassword,
+            fellowship: user.fellowship,
+            token
+        });
 
-        // Executive/Admin Login (email and password)
-        if (email && password) {
-    // User Login (Executive/Worker/General)
-    const user = await prisma.user.findUnique({
-        where: { email },
-        include: { fellowship: true }
-    });
-
-    if (!user) {
-        return res.status(401).json({ error: 'Invalid Email or Password' });
-    }
-
-    // Compare password with hash
-    const isPasswordValid = await comparePassword(password, user.password);
-
-    if (!isPasswordValid) {
-        return res.status(401).json({ error: 'Invalid Email or Password' });
-    }
-
-    // Generate JWT token
-    const token = generateToken(user);
-    const { password: _, ...userWithoutPassword } = user;
-
-    res.json({
-        user: userWithoutPassword,
-        fellowship: user.fellowship || null, // null for SUPER_ADMIN
-        token
-    });
-} else if (code) {
-    // Fellowship Code Login (General Member - no account required)
-    const fellowship = await prisma.fellowship.findUnique({
-        where: { code: code.toUpperCase() }
-    });
-
-    if (fellowship) {
-        res.json({ fellowship, role: 'GENERAL' });
-    } else {
-        res.status(401).json({ error: 'Invalid Fellowship Code' });
-    }
-} else {
-    res.status(400).json({ error: 'Missing credentials. Please provide either (email & password), (memberIdOrEmail & fellowshipCode & password), or (code)' });
-}
     } catch (error) {
-    console.error('Login error:', error);
-    res.status(500).json({ error: 'Internal Server Error' });
-}
+        console.error('Login error:', error);
+        res.status(500).json({ error: 'Internal Server Error' });
+    }
 });
 
 // Register User
