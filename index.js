@@ -148,7 +148,6 @@ app.post('/api/public/register-fellowship', async (req, res) => {
                 name: adminName,
                 email: adminEmail,
                 password: hashedPassword,
-                phone: adminPhone || '',
                 role: 'EXECUTIVE', // President is an Executive
                 department: 'PRESIDENCY', // Default department
                 fellowshipId: fellowship.id
