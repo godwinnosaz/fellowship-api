@@ -108,7 +108,9 @@ app.post('/api/public/register-fellowship', async (req, res) => {
         adminName,
         adminEmail,
         adminPassword,
-        adminPhone
+        adminPhone,
+        adminRole,
+        adminDepartment
     } = req.body;
 
     try {
@@ -143,14 +145,24 @@ app.post('/api/public/register-fellowship', async (req, res) => {
 
         // 4. Create Admin User
         const hashedPassword = await hashPassword(adminPassword);
+
+        // Determine role and department
+        const role = adminRole || 'EXECUTIVE';
+        let department = adminDepartment;
+
+        if (!department) {
+            department = role === 'EXECUTIVE' ? 'PRESIDENCY' : 'GENERAL';
+        }
+
         const adminUser = await prisma.user.create({
             data: {
                 name: adminName,
                 email: adminEmail,
                 password: hashedPassword,
-                role: 'EXECUTIVE', // President is an Executive
-                department: 'PRESIDENCY', // Default department
-                fellowshipId: fellowship.id
+                role: role,
+                department: department,
+                fellowshipId: fellowship.id,
+                phone: adminPhone
             }
         });
 
@@ -745,6 +757,44 @@ app.get('/api/members/:id', authenticateToken, async (req, res) => {
     } catch (error) {
         console.error('Fetch member profile error:', error);
         res.status(500).json({ error: 'Failed to fetch profile' });
+    }
+});
+
+// Update member profile
+app.put('/api/members/:id', authenticateToken, async (req, res) => {
+    const { id } = req.params;
+    const { name, phone, department } = req.body;
+
+    try {
+        // Ensure user is updating their own profile or is an admin
+        if (parseInt(id) !== req.user.id && req.user.role !== 'SUPER_ADMIN' && req.user.role !== 'EXECUTIVE') {
+            return res.status(403).json({ error: 'Unauthorized to update this profile' });
+        }
+
+        const updatedUser = await prisma.user.update({
+            where: { id: parseInt(id) },
+            data: {
+                name,
+                phone,
+                department
+            }
+        });
+
+        // Return updated profile data structure similar to getProfile
+        const profile = {
+            name: updatedUser.name,
+            email: updatedUser.email,
+            phone: updatedUser.phone || '',
+            joinDate: updatedUser.createdAt,
+            department: updatedUser.department || 'General',
+            role: updatedUser.role,
+            // Persist existing stats if possible, or frontend refetches
+        };
+
+        res.json(profile);
+    } catch (error) {
+        console.error('Update profile error:', error);
+        res.status(500).json({ error: 'Failed to update profile' });
     }
 });
 
